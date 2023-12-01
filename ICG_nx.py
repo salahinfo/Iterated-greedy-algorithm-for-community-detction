@@ -4,205 +4,202 @@ import copy
 import time 
 import sys
 import math
-import networkx.algorithms.community as nx_comm
 from scipy.stats import expon
 from sklearn.metrics.cluster import normalized_mutual_info_score
 from GraphTools import GraphTolls
 
 
 class ICG(GraphTolls) :
-    def __init__(self,G,Nb,Beta):    
+    def __init__( self, G, Nb, Beta,path):    
         self.G = G
         self.Nb = Nb
         self.Beta = Beta
-        self.m = G.number_of_edges()
-        self.n = G.number_of_nodes()
         self.Mod_val = 0
+        super( ICG, self).__init__(path)
 
     def expon (self , value , teta):
         x = (1/teta)*(value)
         p =float(math.exp(x))
         return p      
     
-    def GCH(self):
-        community = []
-        vertex_list = [i for i in self.G.nodes()]
+    def GCH( self): 
+        vertex_list = list(self.G.nodes())
         node = random.choice(vertex_list)
+        #print("nnnn",node)
+        com_id = 0
+        self.membership[node] = com_id
+        self.DegCom[com_id] = self.Degree[node]
+        #print(self.Degree)
         vertex_list.remove(node)
-        community.append({node})
-        while vertex_list != []:    
-            node = random.choice(vertex_list)
-            vertex_list.remove(node)
+        for node in  vertex_list:    
+            comm_ngh = super().neigh_comm( node)
             MAX_Q = 0
             pos = -1
-            for index,clusters in enumerate(community):
-                if super().is_edge_betw(self.G,node,clusters):        
-                    Kbv = super().select_edge_betw(self.G,node,clusters)
-                    db = sum([j for k,j in self.G.degree(clusters)])
-                    delta_Q = 1/self.m * Kbv -self.G.degree(node)/(2*self.m**2)*db
-                    if delta_Q > MAX_Q:
-                        MAX_Q = delta_Q
-                        pos = index
+            for com, Kbv in comm_ngh.items():    
+                db = self.DegCom[com]
+                delta_Q =  Kbv - self.Degree[node]/(2.*self.m)*db
+                #print(delta_Q)
+                if delta_Q > MAX_Q:
+                    MAX_Q = delta_Q
+                    pos = com
                 else :
                     delta_Q = 0
-
-            if MAX_Q > 0:
-                community[pos].add(node)
-            else:
-                community.append({node})
             
-        return  community 
+            if MAX_Q > 0:
+                super().insert_node( node, pos, comm_ngh.get( pos , 0))
+            else:
+                com_id = com_id + 1
+                super().insert_node( node , com_id, comm_ngh.get(com_id, 0))
+                                     
+        
+        return  self.membership 
     
-    def Destruction(self,community):
-        vertex_list = [i for i in self.G.nodes()]
-        drop_node = []
-        cut_len = int(float(self.n)* float(self.Beta))
-        random.shuffle(vertex_list)
-        drop = vertex_list[self.n-cut_len:]
-        pres_node = vertex_list[ :self.n-cut_len]
-        for i in range(cut_len) :
-            v = drop.pop()
-            drop_node.append(v)
-            for cluster in community:
-                if v in cluster:
-                    cluster.remove(v)
-                    if len(cluster) == 0: 
-                        del cluster 
-
-        return  community , drop_node, pres_node
+    def Destruction( self):       
+        node_list = list(self.G.nodes())
+        random.shuffle(node_list)
+        cut_len = int(len(self.membership)* float( self.Beta)) 
+        preserve_node = node_list[  : cut_len]
+        drop_node = node_list[cut_len : ]
+        for al in drop_node:
+            com_id = self.membership[al]
+            wgh = super().neigh_comm(al)    
+            super().delet_node(al, com_id, wgh.get(com_id, 0.))
+            if self.internal[com_id] == 0.:
+                del self.internal[com_id]            
+                      
+        #merg_node = [ nod for nod in self.Node_list if nod not in index_community] 
+        return  self.membership, preserve_node, drop_node
     
-    def Reconstruction(self,community,drop_node):
-    
+    def reconcstruction(self, drop_node):
         random.shuffle(drop_node)
-        for node in drop_node:
+        for node in  drop_node:    
+            comm_ngh = super().neigh_comm( node)
             MAX_Q = 0
             pos = -1
-            for index,clusters in enumerate(community):  
-                if super().is_edge_betw(self.G,node,clusters): 
-                    Kbv = super().select_edge_betw(self.G,node,clusters)
-                    db = sum([j for k,j in self.G.degree(clusters)])
-                    delta_Q = 1/self.m * Kbv - self.G.degree(node)/(2*self.m**2)*db
-                    if delta_Q > MAX_Q:
-                        MAX_Q = delta_Q
-                        pos = index
-    
+            for com, Kbv in comm_ngh.items():    
+                db = self.DegCom[com]
+                delta_Q =  Kbv - self.Degree[node]/(2.*self.m)*db
+                if delta_Q > MAX_Q:
+                    MAX_Q = delta_Q
+                    pos = com
+                else :
+                    delta_Q = 0
+            
             if MAX_Q > 0:
-                community[pos].add(node)
+                super().insert_node( node, pos, comm_ngh.get( pos, 0.))
             else:
-                community.append({node})
-                
-                
-        return community
+                com_id = super().generate_random_not_in_list(set(self.membership.values()))
+                super().insert_node( node, com_id, comm_ngh.get( com_id, 0.))
+
     
-    def crousel(self,clusters,preserve_node,drop_node, alpha):
+    def crousel(self, preserve_node, drop_node, alpha):
         iterations = int(alpha*self.n)
-        cluster = clusters.copy()
         for i in range(iterations):
             node = preserve_node.pop(0)
             drop_node.append(node)
-            
-            for community in clusters:
-                communityy = community.copy()
-                for v in community.copy():
-                    if node == v:
-                        community.discard(v)
-                        if community == {}:
-                            clusters.remove({})
-        
+            for vertex,com in self.membership.items():
+                if node == vertex:
+                    wgh = super().neigh_comm(node)  
+                    super().delet_node(node, self.membership[node],wgh.get( self.membership[node], 0.))
+                    
             selected_node = random.choice(drop_node)
             drop_node.remove(selected_node)
             preserve_node.append(selected_node)
-        
             MAX_Q = 0
-            pos = -1
-            for index,community in enumerate(clusters):    
-                Kbv = super().select_edge_betw(self.G,node,community)
-                db = sum([j for k,j in self.G.degree(community)])
-                delta_Q = 1/self.m * Kbv -self.G.degree(node)/(2*self.m**2)*db
+            pos = -1    
+            comm_ngh = super().neigh_comm( selected_node)
+            for com, Kbv in comm_ngh.items():    
+                db = self.DegCom[com]
+                delta_Q =  Kbv - self.Degree[selected_node]/(2.*self.m)*db
                 if delta_Q > MAX_Q:
                     MAX_Q = delta_Q
-                    pos = index
-                    
+                    pos = com
+                else :
+                    delta_Q = 0
+            
             if MAX_Q > 0:
-                if selected_node not in clusters[pos]:    
-                    clusters[pos].add(selected_node)
+                if self.membership[selected_node] != pos :
+                    super().insert_node( selected_node, pos, comm_ngh.get( pos, 0.))
             else:
-                clusters.append({selected_node})
-            
-            
-        return clusters,drop_node 
+                com_id = super().generate_random_not_in_list(set(self.membership.values()))
+                super().insert_node( selected_node, com_id, comm_ngh.get( com_id, 0.))
+        
+        return self.membership, drop_node 
     
     def localsearch(self, clusters):
-        
-        node_list = [i for i in range(self.n)]
+        super().init(clusters)
+        node_list = [i for i in self.G.nodes()]
         count = 0
-        while count < self.n:
+        modified = True
+        while modified:
+            modified = False
+            for vsele in node_list :
+                degree = self.Degree[vsele]
+                com_befor = self.membership[vsele]
+                ngh_com = super().neigh_comm(vsele)
+                dvc = super().ngh_node(vsele, com_befor)
+                devc = self.DegCom[com_befor]
+                maxq = 0
+                m_com = com_befor             
+                for com, dvcp in ngh_com.items() : 
+                    devcp = self.DegCom[com]
+                    deq = (1/self.m) * ( dvcp-dvc )- ((degree)/(2.*self.m**2.)) *( devcp-devc+degree )
+                
+                    if deq > maxq :
+                        maxq = deq
+                        m_com = com
+                        modified = True
+                        
+                super().delet_node( vsele, com_befor, ngh_com.get( com_befor, 0.))            
+                super().insert_node( vsele, m_com, ngh_com.get( m_com, 0.))   
+           
+        return clusters
+    
+    def reconcstruction( self, drop_node):
+        random.shuffle( drop_node )
+        for node in  drop_node:    
+            comm_ngh = super().neigh_comm( node)
+            MAX_Q = 0
+            pos = -1
+            for com, Kbv in comm_ngh.items():    
+                db = self.DegCom[com]
+                delta_Q =  Kbv - self.Degree[node]/(2.*self.m)*db
+                if delta_Q > MAX_Q:
+                    MAX_Q = delta_Q
+                    pos = com
+                else :
+                    delta_Q = 0
             
-            random.shuffle(node_list)
-            for node in node_list:
-                Q = []
-                degree = self.G.degree(node)
-                for community in clusters:
-                    if node in community:
-                        self_community = community
-                        Kav = super().select_edge_betw(self.G,node,self_community)
-                        da = sum([j for k,j in self.G.degree(self_community)])
-                        break            
-                for index,community in enumerate(clusters):
-                    if node in community:
-                        delta_Q = 0
-                        before = index
-                        Q.append(delta_Q)
-                    else:
-                        Kbv = super().select_edge_betw(self.G,node,community)
-                        db = sum([j for k,j in self.G.degree(community)])
-                        delta_Q = (1/self.m) * (Kbv-Kav) + (degree/(2*self.m**2))*(da - db - degree)
-                        Q.append(delta_Q)
+            if MAX_Q > 0:
+                super().insert_node( node, pos, comm_ngh.get( pos, 0.))
+            else:
+                com_id = super().generate_random_not_in_list(set(self.membership.values()))
+                super().insert_node( node, com_id, comm_ngh.get( com_id, 0.))
 
-                if max(Q) > 0:
-                    pos = Q.index(max(Q))
-                    clusters[pos].add(node)
-                    clusters[before].remove(node)
-                    if clusters[before] == []:
-                        del clusters[before]
+        return self.membership
 
-                else:
-                    count += 1
-
-        membership = [0 for i in range(self.n)]
-        for i in range(len(clusters)):
-            for index in clusters[i]:
-                membership[index] = i
-        
-        return membership, clusters
-        
-    def lebel_node (self,community):
-        label = sorted([i for i in self.G.nodes()])
-        for index,no in enumerate (label):
-            for i in range(len(community)):
-                if no in community[i]:
-                    label[index] = i
-        
-        return label    
-                               
+                         
     def Run_ICG (self):
         start = time.time()
         soltion = self.GCH()
-        solutionmm, soltion = self.localsearch(soltion)
+        soltion = self.localsearch(soltion)
         best_solution = copy.deepcopy(soltion)
-        T_init = 0.025*nx_comm.modularity(self.G, soltion)
+        q = super().modularity()
+        print(q, time.time()-start)
+        T_init = 0.025*q
         T = T_init
         nb_iter = 0
         while nb_iter < self.Nb:
-            Q1 = nx_comm.modularity(self.G, soltion)
-            incumbent_solution = copy.deepcopy(soltion)
-            soltion,drop_nodes,preserve_node = self.Destruction(soltion)
-            soltion, drop_nodes = self.crousel(soltion,preserve_node, drop_nodes, 0.5) 
-            soltion = self.Reconstruction(soltion,drop_nodes)
-            solutionmm, soltion = self.localsearch(soltion) 
-            Q2 = nx_comm.modularity(self.G, soltion)
-            if Q2 > nx_comm.modularity(self.G, best_solution):
-                best_solution = copy.deepcopy(soltion)
+            Q1 = super().modularity()
+            incumbent_solution = copy.deepcopy( soltion)
+            soltion,drop_nodes,preserve_node = self.Destruction()
+            soltion, drop_nodes = self.crousel( preserve_node, drop_nodes, 0.7) 
+            soltion = self.reconcstruction( drop_nodes)
+            soltion = self.localsearch( soltion) 
+            Q2 = super().modularity()
+            print("q and time ",Q2, time.time() - start)
+            if Q2 > super().modularity():
+                best_solution = copy.deepcopy( soltion)
                 
             P = random.random()
             if Q2 < Q1 and P > math.exp((Q2 - Q1)//T):
@@ -217,31 +214,31 @@ class ICG(GraphTolls) :
         
             nb_iter = nb_iter + 1
         
-        self.Mod_val = nx_comm.modularity(self.G, best_solution)
+        self.Mod_val = super().modularity()
         end = time.time()
         t = end-start
         
         return self.Mod_val, best_solution,t                               
 
 def de_main():
-    path =  '/home/yacine/Desktop/real_network/football.gml'
-    Number_iter = 200
-    Beta = 0.4
-    data = GraphTolls()
-    graph = data.Read_Graph(path)
+    path =  '/home/yacine/Desktop/real_network/polbooks.gml'
+    Number_iter = 300
+    Beta = 0.3
+    data = GraphTolls(path)
+    graph = data.Read_Graph()
     NMI_list = []
     Time_list = [] 
     Q_list = []
     nb_run = 0
-    while nb_run < 2 :
-        communities = ICG(graph, Number_iter, Beta)
-        mod,community,tim = communities.Run_ICG() 
+    while nb_run < 1 :
+        communities = ICG( graph, Number_iter, Beta,path)
+        mod, community, tim = communities.Run_ICG() 
         Q_list.append(mod)
         Time_list.append(tim)
-        label = communities.lebel_node(community)  
-        True_partition = data.Read_GroundTruth('/home/yacine/Desktop/real_network/football.txt')
-        NMI = normalized_mutual_info_score(True_partition,label)
-        NMI_list.append(NMI)      
+        #label = communities.lebel_node(community)  
+        #True_partition = data.Read_GroundTruth('/home/yacine/Desktop/real_network/polbooks.txt')
+        #NMI = normalized_mutual_info_score(True_partition,list(community.values()))
+        #NMI_list.append(NMI)      
         nb_run = nb_run +1
     
     
