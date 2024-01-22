@@ -54,7 +54,8 @@ class ICG(GraphTolls) :
         
         return  self.membership 
     
-    def Destruction( self):       
+    def Destruction( self, clusters): 
+        super().init(clusters)
         node_list = list(self.G.nodes())
         random.shuffle(node_list)
         cut_len = int(len(self.membership)* float( self.Beta)) 
@@ -70,7 +71,8 @@ class ICG(GraphTolls) :
         #merg_node = [ nod for nod in self.Node_list if nod not in index_community] 
         return  self.membership, preserve_node, drop_node
     
-    def reconcstruction(self, drop_node):
+    def reconcstruction(self,clusters, drop_node):
+        super().init(clusters)
         random.shuffle(drop_node)
         for node in  drop_node:    
             comm_ngh = super().neigh_comm( node)
@@ -92,7 +94,8 @@ class ICG(GraphTolls) :
                 super().insert_node( node, com_id, comm_ngh.get( com_id, 0.))
 
     
-    def crousel(self, preserve_node, drop_node, alpha):
+    def crousel(self, clusters,preserve_node, drop_node, alpha):
+        super().init(clusters)
         iterations = int(alpha*self.n)
         for i in range(iterations):
             node = preserve_node.pop(0)
@@ -155,7 +158,8 @@ class ICG(GraphTolls) :
            
         return clusters
     
-    def reconcstruction( self, drop_node):
+    def reconcstruction( self,clusters, drop_node):
+        super().init(clusters)
         random.shuffle( drop_node )
         for node in  drop_node:    
             comm_ngh = super().neigh_comm( node)
@@ -192,12 +196,12 @@ class ICG(GraphTolls) :
         while nb_iter < self.Nb:
             Q1 = super().modularity()
             incumbent_solution = copy.deepcopy( soltion)
-            soltion,drop_nodes,preserve_node = self.Destruction()
-            soltion, drop_nodes = self.crousel( preserve_node, drop_nodes, 0.7) 
-            soltion = self.reconcstruction( drop_nodes)
+            soltion,drop_nodes,preserve_node = self.Destruction(incumbent_solution)
+            soltion, drop_nodes = self.crousel( soltion,preserve_node, drop_nodes, 0.7) 
+            soltion = self.reconcstruction( soltion,drop_nodes)
             soltion = self.localsearch( soltion) 
             Q2 = super().modularity()
-            print("q and time ",Q2, time.time() - start)
+            print("q and time ",Q2, nb_iter)
             if Q2 > super().modularity():
                 best_solution = copy.deepcopy( soltion)
                 
@@ -221,8 +225,8 @@ class ICG(GraphTolls) :
         return self.Mod_val, best_solution,t                               
 
 def de_main():
-    path =  '/home/yacine/Desktop/real_network/polbooks.gml'
-    Number_iter = 300
+    path = '/home/yacine/Desktop/real_network/amazon.gml'
+    Number_iter = 20
     Beta = 0.3
     data = GraphTolls(path)
     graph = data.Read_Graph()

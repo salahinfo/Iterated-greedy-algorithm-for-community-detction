@@ -4,7 +4,6 @@ import copy
 import time 
 import sys
 import math
-import networkx.algorithms.community as nx_comm
 from sklearn.metrics.cluster import normalized_mutual_info_score
 from GraphTools import GraphTolls
 
@@ -121,8 +120,8 @@ class IG(GraphTolls) :
         return best_Q, best_solution,t                               
 
 def de_main():
-    path =  '/home/yacine/Desktop/real_network/netscience.gml'
-    Number_iter = 200
+    path =  '/home/yacine/Desktop/real_network/amazon.gml'
+    Number_iter = 30
     Beta = 0.4
     data = GraphTolls(path)
     graph = data.Read_Graph()
