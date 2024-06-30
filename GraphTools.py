@@ -4,6 +4,7 @@ import sys
 import networkx as nx
 import random
 import numpy as np
+import csv
 
 class GraphTolls:
     
@@ -16,7 +17,7 @@ class GraphTolls:
         self.Node_list = {i : i for i in self.graph.nodes()}
         self.Degree = dict(self.graph.degree())
         self.DegCom = {}
-        self.membership = { i : None for i in self.graph.nodes() }
+        #self.membership = { i : None for i in self.graph.nodes() }
         self.loops = {}
         self.internal = {}
         
@@ -122,22 +123,22 @@ class GraphTolls:
                 return key
         
         
-    def ngh_node ( self, node, com ):
+    def ngh_node ( self, node, membership, com ):
         ngh_com = 0.
         for ngh, datas in self.graph[node].items():
             link = datas.get('weight', 1)  
-            if  self.membership[ngh] == com:
+            if  membership[ngh] == com:
                 ngh_com += link
                              
         return ngh_com
     
-    def neigh_comm ( self, node):
+    def neigh_comm ( self, node, membership):
         ngh_com = {}
         for ngh, datas in self.graph[node].items():
             link = datas.get( 'weight', 1)
             #print("weigh",weight, link)            
-            if  self.membership[ngh] != None and node != ngh:
-                com_id = self.membership[ngh]
+            if  membership[ngh] != None and node != ngh:
+                com_id = membership[ngh]
                 ngh_com[com_id] = ngh_com.get( com_id, 0) + link
                                                       
         return ngh_com
@@ -185,9 +186,9 @@ class GraphTolls:
                 return random_number            
     
                          
-    def modularity( self):
+    def modularity( self, membership):
         result = 0
-        for com in set( self.membership.values()):
+        for com in set( membership.values()):
             in_degree = self.internal.get( com, 0.)
             degree = self.DegCom.get( com, 0.)
             result += in_degree / self.m - (( degree / ( 2. * self.m )) ** 2)
@@ -207,12 +208,11 @@ class GraphTolls:
 
         return ret
     
-    def renumber( self):
+    def renumber( self, membership):
         """Renumber the values of the dictionary from 0 to n"""
         count = 0
-        ret = self.membership.copy()
+        ret = membership.copy()
         new_values = dict([])
-    
         for key in self.membership.keys():
             value = self.membership[key]
             new_value = new_values.get(value, -1)
@@ -220,32 +220,38 @@ class GraphTolls:
                 new_values[value] = count
                 new_value = count
                 count += 1
-            self.membership[key] = new_value
+            membership[key] = new_value
+
+        return membership    
     
-    def delet_node( self, node, com, weicom):
+    def delet_node( self, node, membership, com, weicom):
         
         self.DegCom[com] = float(self.DegCom.get(com, 0.) - self.Degree.get(node, 0.))
         self.internal[com] = float(self.internal.get(com, 0.) - weicom - self.loops.get(node, 0.))
-        self.membership[node] = None
+        membership[node] = None
        
-        
-    def insert_node( self, node, com, weicom):
+        return membership
+    
+
+    def insert_node( self, node, membership,  com, weicom):
         
         self.DegCom[com] = float(self.DegCom.get( com, 0.) + self.Degree.get( node, 0.))
         self.internal[com] = float(self.internal.get( com, 0.) + weicom + self.loops.get( node, 0.))
-        self.membership[node] = com                      
+        membership[node] = com     
+
+        return membership                 
 
     def init( self, solution, weight = 'weight'):
         self.DegCom = {}
         self.internal = {}
         self.Degree= {}
-        self.membership = {}
+        membership = {}
         self.m = self.graph.size( weight= 'weight')
         self.n =  self.graph.number_of_nodes()
         self.loops = {}    
         for node in  self.graph.nodes():
             com = solution[node]
-            self.membership[node] = com
+            membership[node] = com
             deg = float( self.graph.degree( node, 'weight'))
             self.DegCom[com] = self.DegCom.get(com, 0.) + deg
             self.Degree[node] = deg
@@ -264,4 +270,13 @@ class GraphTolls:
                         inc += float( edge_weight) / 2.
                 
             self.internal[com] = self.internal.get( com, 0.) + inc
+
+        return membership    
+
+    def writefile(self, Q):
     
+        with open('/home/yacine/Desktop/result_ICG/res.csv', 'w', newline='') as csvfile:    
+            writer = csv.writer(csvfile)
+            writer.writerow(Q)        
+    
+
